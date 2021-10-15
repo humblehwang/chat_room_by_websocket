@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title></title>
+    <meta http-equiv="content-type" content="text/html;charset=utf-8">
+    <style>
+        p {
+            text-align: left;
+            padding-left: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div style="width: 800px;height: 600px;margin: 30px auto;text-align: center">
+        <h1>WebSocket Chat Room</h1>
+        <div style="width: 800px;border: 1px solid gray;height: 300px;">
+            <div style="width: 200px;height: 300px;float: left;text-align: left;">
+                <p><span>Who are online:</span><span id="user_num">0</span></p>
+                <div id="user_list" style="overflow: auto;">
+
+                </div>
+            </div>
+            <div id="msg_list"
+                style="width: 598px;border:  1px solid gray; height: 300px;overflow: scroll;float: left;">
+            </div>
+        </div>
+        <br>
+        <textarea id="msg_box" rows="6" cols="50" onkeydown="confirm(event)"></textarea><br>
+        <input type="button" value="Send" onclick="send()">
+    </div>
+</body>
+
+</html>
+
+<script type="text/javascript">
+    // Save the user ID and send the user ID to backend if the handshake is success
+    var uname = prompt('Please input user name', 'user' + uuid(8, 16));
+    var ws = new WebSocket("ws://127.0.0.1:1234");
+    ws.onopen = function () {
+        var data = "system: Establishing Connection Successfully";
+        listMsg(data);
+    };
+
+    /**
+     * The data come from backend
+     *
+     * msg.type : user general information;system system information;handshake handshake information;login login information; logout logou information;
+     * msg.from : who send the information
+     * msg.content: what is information about
+     */
+    ws.onmessage = function (e) {
+        var msg = JSON.parse(e.data);
+        var sender, user_name, name_list, change_type;
+
+        switch (msg.type) {
+            case 'system':
+                sender = 'Sstem: ';
+                break;
+            case 'user':
+                sender = msg.from + ': ';
+                break;
+            case 'handshake':
+                var user_info = {
+                    'type': 'login',
+                    'content': uname
+                };
+                sendMsg(user_info);
+                return;
+            case 'login':
+            case 'logout':
+                user_name = msg.content;
+                name_list = msg.user_list;
+                change_type = msg.type;
+                dealUser(user_name, change_type, name_list);
+                return;
+        }
+
+        var data = sender + msg.content;
+        listMsg(data);
+    };
+
+    ws.onerror = function () {
+        var data = "system : Something Wrong, Please Try Again.";
+        listMsg(data);
+    };
+
+    //Send the closing conection to backend server if the website is closed
+    window.onbeforeunload = function () {
+        var user_info = {
+            'type': 'logout',
+            'content': uname
+        };
+        sendMsg(user_info);
+        ws.close();
+    }
+
+    /**
+     * Click enter to send data
+     *
+     * @param event
+     *
+     * @returns {boolean}
+     */
+    function confirm(event) {
+        var key_num = event.keyCode;
+        if (13 == key_num) {
+            send();
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * send input data to sendMsg function and clear the input value
+     */
+    function send() {
+        var msg_box = document.getElementById("msg_box");
+        var content = msg_box.value;
+        var reg = new RegExp("\r\n", "g");
+        content = content.replace(reg, "");
+        var msg = {
+            'content': content.trim(),
+            'type': 'send'
+        };
+        sendMsg(msg);
+        msg_box.value = '';
+        // clear the char '\n'
+    }
+
+    /**
+     * Add the information to the chat box and let the scroll to the bottom
+     */
+    function listMsg(data) {
+        var msg_list = document.getElementById("msg_list");
+        var msg = document.createElement("p");
+
+        msg.innerHTML = data;
+        msg_list.appendChild(msg);
+        msg_list.scrollTop = msg_list.scrollHeight;
+    }
+
+    /**
+     * Handling the user login and logout information
+     *
+     * @param user_name user ID
+     * @param type  login/logout
+     * @param name_list user list
+     */
+    function dealUser(user_name, type, name_list) {
+        var user_list = document.getElementById("user_list");
+        var user_num = document.getElementById("user_num");
+        while (user_list.hasChildNodes()) {
+            user_list.removeChild(user_list.firstChild);
+        }
+
+        for (var index in name_list) {
+            var user = document.createElement("p");
+            user.innerHTML = name_list[index];
+            user_list.appendChild(user);
+        }
+        user_num.innerHTML = name_list.length;
+        user_list.scrollTop = user_list.scrollHeight;
+
+        var change = type == 'login' ? 'is online' : 'is offline';
+
+        var data = 'system: ' + user_name + ' ' + change;
+        listMsg(data);
+    }
+
+    /**
+     * transform the data to json form and send to the backend.
+     * @param msg
+     */
+    function sendMsg(msg) {
+        var data = JSON.stringify(msg);
+        ws.send(data);
+    }
+
+    /**
+     * Generate a unique user ID for user who did't input user name;
+     *
+     * @param len
+     * @param radix
+     * @returns {string}
+     */
+    function uuid(len, radix) {
+        var chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
+        var uuid = [],
+            i;
+        radix = radix || chars.length;
+
+        if (len) {
+            for (i = 0; i < len; i++) uuid[i] = chars[0 | Math.random() * radix];
+        } else {
+            var r;
+
+            uuid[8] = uuid[13] = uuid[18] = uuid[23] = '-';
+            uuid[14] = '4';
+
+            for (i = 0; i < 36; i++) {
+                if (!uuid[i]) {
+                    r = 0 | Math.random() * 16;
+                    uuid[i] = chars[(i == 19) ? (r & 0x3) | 0x8 : r];
+                }
+            }
+        }
+
+        return uuid.join('');
+    }
+</script>
